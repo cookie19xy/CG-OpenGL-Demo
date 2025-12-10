@@ -8,6 +8,7 @@
 #include <string>
 #include <sstream>
 #include <khrplatform.h>
+#include <vector>
 
 // 全局变量
 const unsigned int SCR_WIDTH = 800;
@@ -29,6 +30,7 @@ float lastFrame = 0.0f;
 
 // 着色器程序ID
 unsigned int shaderProgram;
+unsigned int lightShaderProgram; // 用于渲染光源的小立方体
 
 // 相机移动速度
 float cameraSpeed = 2.5f;
@@ -206,46 +208,46 @@ int main() {
 
     // 加载着色器程序
     shaderProgram = createShaderProgram("shaders/vertex_shader.glsl", "shaders/fragment_shader.glsl");
-    if (shaderProgram == 0) {
+    lightShaderProgram = createShaderProgram("shaders/light_vertex.glsl", "shaders/light_fragment.glsl");
+    if (shaderProgram == 0 || lightShaderProgram == 0) {
         glfwTerminate();
         return -1;
     }
 
-    // 立方体顶点数据（带位置）
+    // 立方体顶点数据（位置 + 法向量） 每个顶点: position(3) + normal(3)
     float vertices[] = {
-        // 前平面
-        -0.5f, -0.5f,  0.5f,
-         0.5f, -0.5f,  0.5f,
-         0.5f,  0.5f,  0.5f,
-        -0.5f,  0.5f,  0.5f,
-        // 后平面
-        -0.5f, -0.5f, -0.5f,
-         0.5f, -0.5f, -0.5f,
-         0.5f,  0.5f, -0.5f,
-        -0.5f,  0.5f, -0.5f,
-        // 左平面
-        -0.5f,  0.5f,  0.5f,
-        -0.5f,  0.5f, -0.5f,
-        -0.5f, -0.5f, -0.5f,
-        -0.5f, -0.5f,  0.5f,
-        // 右平面
-         0.5f,  0.5f,  0.5f,
-         0.5f,  0.5f, -0.5f,
-         0.5f, -0.5f, -0.5f,
-         0.5f, -0.5f,  0.5f,
-         // 上平面
-         -0.5f,  0.5f, -0.5f,
-          0.5f,  0.5f, -0.5f,
-          0.5f,  0.5f,  0.5f,
-         -0.5f,  0.5f,  0.5f,
-         // 下平面
-         -0.5f, -0.5f, -0.5f,
-          0.5f, -0.5f, -0.5f,
-          0.5f, -0.5f,  0.5f,
-         -0.5f, -0.5f,  0.5f
+        // 前 (0,0,1)
+        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f, 1.0f,
+         0.5f, -0.5f,  0.5f,  0.0f, 0.0f, 1.0f,
+         0.5f,  0.5f,  0.5f,  0.0f, 0.0f, 1.0f,
+        -0.5f,  0.5f,  0.5f,  0.0f, 0.0f, 1.0f,
+        // 后 (0,0,-1)
+        -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,-1.0f,
+         0.5f, -0.5f, -0.5f,  0.0f, 0.0f,-1.0f,
+         0.5f,  0.5f, -0.5f,  0.0f, 0.0f,-1.0f,
+        -0.5f,  0.5f, -0.5f,  0.0f, 0.0f,-1.0f,
+        // 左 (-1,0,0)
+        -0.5f,  0.5f,  0.5f, -1.0f, 0.0f, 0.0f,
+        -0.5f,  0.5f, -0.5f, -1.0f, 0.0f, 0.0f,
+        -0.5f, -0.5f, -0.5f, -1.0f, 0.0f, 0.0f,
+        -0.5f, -0.5f,  0.5f, -1.0f, 0.0f, 0.0f,
+        // 右 (1,0,0)
+         0.5f,  0.5f,  0.5f,  1.0f, 0.0f, 0.0f,
+         0.5f,  0.5f, -0.5f,  1.0f, 0.0f, 0.0f,
+         0.5f, -0.5f, -0.5f,  1.0f, 0.0f, 0.0f,
+         0.5f, -0.5f,  0.5f,  1.0f, 0.0f, 0.0f,
+        // 上 (0,1,0)
+        -0.5f,  0.5f, -0.5f,  0.0f, 1.0f, 0.0f,
+         0.5f,  0.5f, -0.5f,  0.0f, 1.0f, 0.0f,
+         0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 0.0f,
+        -0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 0.0f,
+        // 下 (0,-1,0)
+        -0.5f, -0.5f, -0.5f,  0.0f,-1.0f, 0.0f,
+         0.5f, -0.5f, -0.5f,  0.0f,-1.0f, 0.0f,
+         0.5f, -0.5f,  0.5f,  0.0f,-1.0f, 0.0f,
+        -0.5f, -0.5f,  0.5f,  0.0f,-1.0f, 0.0f
     };
 
-    // 索引数据（三角面）
     unsigned int indices[] = {
         0, 1, 2,  0, 2, 3,   // 前
         4, 5, 6,  4, 6, 7,   // 后
@@ -269,13 +271,42 @@ int main() {
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
 
-    // 设置顶点属性（位置）
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    // 设置顶点属性（位置 = location 0，法线 = location 1）
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
 
-    // 解绑
+    // 解绑（注意：不要在解绑 VAO 前解绑 EBO）
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
+
+    // 为光源创建 VAO（只需要位置属性）
+    unsigned int lightVAO;
+    glGenVertexArrays(1, &lightVAO);
+    glBindVertexArray(lightVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO); // 复用顶点缓冲
+    // 绑定 EBO 到 lightVAO，使得 glDrawElements 在 lightVAO 上可用
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glBindVertexArray(0);
+
+    // 准备多个模型位置和颜色用于测试光照
+    std::vector<glm::vec3> cubePositions = {
+        { -1.0f, 0.0f, -1.0f },
+        {  2.0f, 0.0f,  0.0f },
+        {  0.0f, 0.0f,  1.5f }
+    };
+    std::vector<glm::vec3> cubeColors = {
+        { 1.0f, 0.5f, 0.31f },
+        { 0.2f, 0.7f, 0.3f },
+        { 0.1f, 0.4f, 1.0f }
+    };
+
+    // 光源属性
+    glm::vec3 lightPos = glm::vec3(1.2f, 1.0f, 2.0f);
+    glm::vec3 lightColor = glm::vec3(1.0f);
 
     // 渲染循环
     while (!glfwWindowShouldClose(window)) {
@@ -300,7 +331,6 @@ int main() {
         // 计算视图矩阵和投影矩阵
         glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
         glm::mat4 projection = glm::perspective(glm::radians(fov), (float)SCR_WIDTH / SCR_HEIGHT, 0.1f, 100.0f);
-        glm::mat4 model = glm::mat4(1.0f); // 模型矩阵（单位矩阵）
 
         // 将矩阵传入着色器
         unsigned int viewLoc = glGetUniformLocation(shaderProgram, "view");
@@ -308,10 +338,43 @@ int main() {
         unsigned int modelLoc = glGetUniformLocation(shaderProgram, "model");
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
         glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
-        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
 
-        // 绘制立方体
+        // 传递光照相关 uniform
+        glUniform3fv(glGetUniformLocation(shaderProgram, "lightPos"), 1, glm::value_ptr(lightPos));
+        glUniform3fv(glGetUniformLocation(shaderProgram, "lightColor"), 1, glm::value_ptr(lightColor));
+        glUniform3fv(glGetUniformLocation(shaderProgram, "viewPos"), 1, glm::value_ptr(cameraPos));
+
+        // 绘制多个立方体（每个设置不同的 model + objectColor）
         glBindVertexArray(VAO);
+        for (size_t i = 0; i < cubePositions.size(); ++i) {
+            glm::mat4 model = glm::mat4(1.0f);
+            model = glm::translate(model, cubePositions[i]);
+            float scale = 0.8f + 0.2f * (float)i;
+            model = glm::scale(model, glm::vec3(scale));
+
+            glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+            glUniform3fv(glGetUniformLocation(shaderProgram, "objectColor"), 1, glm::value_ptr(cubeColors[i]));
+
+            glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
+        }
+
+        // 绘制光源小立方体
+        glUseProgram(lightShaderProgram);
+        unsigned int lightModelLoc = glGetUniformLocation(lightShaderProgram, "model");
+        unsigned int lightViewLoc = glGetUniformLocation(lightShaderProgram, "view");
+        unsigned int lightProjLoc = glGetUniformLocation(lightShaderProgram, "projection");
+        unsigned int lightColorLoc = glGetUniformLocation(lightShaderProgram, "lightColor");
+        
+        glm::mat4 lightModel = glm::mat4(1.0f);
+        lightModel = glm::translate(lightModel, lightPos);
+        lightModel = glm::scale(lightModel, glm::vec3(0.2f));
+
+        glUniformMatrix4fv(lightViewLoc, 1, GL_FALSE, glm::value_ptr(view));
+        glUniformMatrix4fv(lightProjLoc, 1, GL_FALSE, glm::value_ptr(projection));
+        glUniformMatrix4fv(lightModelLoc, 1, GL_FALSE, glm::value_ptr(lightModel));
+        glUniform3fv(lightColorLoc, 1, glm::value_ptr(lightColor));
+
+        glBindVertexArray(lightVAO);
         glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
 
         // 交换缓冲 + 轮询事件
@@ -321,9 +384,11 @@ int main() {
 
     // 释放资源
     glDeleteVertexArrays(1, &VAO);
+    glDeleteVertexArrays(1, &lightVAO);
     glDeleteBuffers(1, &VBO);
     glDeleteBuffers(1, &EBO);
     glDeleteProgram(shaderProgram);
+    glDeleteProgram(lightShaderProgram);
 
     // 终止GLFW
     glfwTerminate();
